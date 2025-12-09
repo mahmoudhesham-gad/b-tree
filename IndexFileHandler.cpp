@@ -5,8 +5,25 @@ using namespace std;
 class IndexFileHandler{
 private:
     unsigned char fileFieldSize = sizeof(int);
+    char* indexFileName;
     int numberOfRecords;
     int m; 
+
+    unsigned char getRecordStart(int recordNumber){
+        return fileFieldSize * (2 * this->m + 1) * recordNumber;
+    }
+
+    bool isLeafNode(int recordNumber){
+        unsigned char pos = getRecordStart(recordNumber);
+        ifstream indexFile = ifstream(this->indexFileName, ios::binary);
+        if(!indexFile){
+            throw runtime_error("Could not open index file");
+        }
+        indexFile.seekg(pos);
+        int nodeType;
+        indexFile.read(reinterpret_cast<char*>(&nodeType), sizeof(int));
+        return nodeType == 0; 
+    }
 
 public:
     void createIndexFile(char* filename, int numberOfRecords, int m){
@@ -40,6 +57,7 @@ public:
         }
         
         indexFile.close();
+        this->indexFileName = filename;
     }
 
     void DisplayIndexFileContent(char* filename){
