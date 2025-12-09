@@ -3,7 +3,7 @@
 using namespace std;
 
 class IndexFileHandler{
-private:
+public:
     unsigned char fileFieldSize = sizeof(int);
     char* indexFileName;
     int numberOfRecords;
@@ -48,7 +48,6 @@ private:
         return nodeType == 0; 
     }
 
-public:
     void createIndexFile(char* filename, int numberOfRecords, int m){
         ofstream indexFile;
         indexFile.open(filename, ios::binary);
