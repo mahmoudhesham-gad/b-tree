@@ -8,6 +8,29 @@ private:
     char* indexFileName;
     int numberOfRecords;
     int m; 
+    struct IndexRecord{
+        // make sure to check for end of record when using nextRecordPos can access next record
+        int key;
+        int address;
+        unsigned char nextRecordPos;
+
+        IndexRecord(unsigned char pos, char* indexFileName, unsigned char fileFieldSize){
+            ifstream indexFile = ifstream(indexFileName, ios::binary);
+            if(!indexFile){
+                throw runtime_error("Could not open index file");
+            }
+            indexFile.seekg(pos);
+            indexFile.read(reinterpret_cast<char*>(&key), fileFieldSize);
+            indexFile.seekg(pos + fileFieldSize);
+            indexFile.read(reinterpret_cast<char*>(&address), fileFieldSize);
+            indexFile.close();
+            this->nextRecordPos = pos + 2 * fileFieldSize;
+        }
+
+        IndexRecord getNextRecord(char* indexFileName, unsigned char fileFieldSize){
+            return IndexRecord(this->nextRecordPos, indexFileName, fileFieldSize);
+        }
+    };
 
     unsigned char getRecordStart(int recordNumber){
         return fileFieldSize * (2 * this->m + 1) * recordNumber;
