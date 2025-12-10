@@ -1,22 +1,15 @@
 #include <fstream>
 #include <iostream>
 using namespace std;
-
-class IndexFileHandler {
-public:
-  unsigned char fileFieldSize = sizeof(int);
-  char *indexFileName;
-  int numberOfRecords;
-  int m;
   struct IndexNode {
     // make sure to check for end of record when using nextRecordPos can access
     // next record
     int key;
     int address;
-    unsigned char pos;
+    int pos;
 
-    IndexNode(unsigned char pos, char *indexFileName,
-              unsigned char fileFieldSize) {
+    IndexNode(int pos, char *indexFileName,
+              int fileFieldSize) {
       ifstream indexFile = ifstream(indexFileName, ios::binary);
       if (!indexFile) {
         throw runtime_error("Could not open index file");
@@ -29,16 +22,22 @@ public:
       this->pos = pos;
     }
 
-    IndexNode getNextRecord(char *indexFileName, unsigned char fileFieldSize) {
+    IndexNode getNextRecord(char *indexFileName, int fileFieldSize) {
       return IndexNode(this->pos + 2 * fileFieldSize, indexFileName,
                        fileFieldSize);
     }
 
-    int getRecordNumber(unsigned char fileFieldSize, int m) {
+    int getRecordNumber(int fileFieldSize, int m) {
       return this->pos / (fileFieldSize * (2 * m + 1));
     }
 
   };
+class IndexFileHandler {
+public:
+  int fileFieldSize = sizeof(int);
+  char *indexFileName;
+  int numberOfRecords;
+  int m;
 
     void writeIndexItem(IndexNode node) {
       fstream indexFile =
@@ -50,7 +49,7 @@ public:
     }
 
 
-  unsigned char getRecordStart(int recordNumber) {
+  int getRecordStart(int recordNumber) {
     return fileFieldSize * (2 * this->m + 1) * recordNumber;
   }
 
@@ -64,7 +63,7 @@ public:
   }
 
   bool isLeafNode(int recordNumber) {
-    unsigned char pos = getRecordStart(recordNumber);
+    int pos = getRecordStart(recordNumber);
     ifstream indexFile = ifstream(this->indexFileName, ios::binary);
     if (!indexFile) {
       throw runtime_error("Could not open index file");
