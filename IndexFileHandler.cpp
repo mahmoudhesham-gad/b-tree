@@ -1,14 +1,20 @@
+#ifndef INDEX_FILE_HANDLER_CPP
+#define INDEX_FILE_HANDLER_CPP
+
 #include <fstream>
 #include <iostream>
 using namespace std;
-  struct IndexNode {
+
+class IndexFileHandler; // Forward declaration
+
+struct IndexNode {
     // make sure to check for end of record when using nextRecordPos can access
     // next record
     int key;
     int address;
     int pos;
 
-    IndexNode(int pos, char *indexFileName,
+    IndexNode(int pos, const char *indexFileName,
               int fileFieldSize) {
       ifstream indexFile = ifstream(indexFileName, ios::binary);
       if (!indexFile) {
@@ -22,16 +28,17 @@ using namespace std;
       this->pos = pos;
     }
 
-    IndexNode getNextRecord(char *indexFileName, int fileFieldSize) {
+    IndexNode getNextRecord(const char *indexFileName, int fileFieldSize) const {
       return IndexNode(this->pos + 2 * fileFieldSize, indexFileName,
                        fileFieldSize);
     }
 
-    int getRecordNumber(int fileFieldSize, int m) {
+    int getRecordNumber(int fileFieldSize, int m) const {
       return this->pos / (fileFieldSize * (2 * m + 1));
     }
 
   };
+
 class IndexFileHandler {
 public:
   int fileFieldSize = sizeof(int);
@@ -39,30 +46,55 @@ public:
   int numberOfRecords;
   int m;
 
-    void writeIndexItem(IndexNode node) {
-      fstream indexFile =
-          fstream(indexFileName, ios::binary | ios::in | ios::out);
-      indexFile.seekp(node.pos);
-      indexFile.write(reinterpret_cast<char *>(&node.key), fileFieldSize);
-      indexFile.write(reinterpret_cast<char *>(&node.address), fileFieldSize);
-      indexFile.close();
-    }
+  void writeIndexItem(IndexNode node) {
+    fstream indexFile =
+        fstream(indexFileName, ios::binary | ios::in | ios::out);
+    indexFile.seekp(node.pos);
+    indexFile.write(reinterpret_cast<char *>(&node.key), fileFieldSize);
+    indexFile.write(reinterpret_cast<char *>(&node.address), fileFieldSize);
+    indexFile.close();
+  }
 
-
-  int getRecordStart(int recordNumber) {
+  int getRecordStart(int recordNumber) const {
     return fileFieldSize * (2 * this->m + 1) * recordNumber;
   }
 
-  IndexNode getNodeByRecordAndIndex(int recordNumber, int keyIndex) {
+  IndexNode getNodeByRecordAndIndex(int recordNumber, int keyIndex) const {
     int pos = getRecordStart(recordNumber) + fileFieldSize * (1 + 2 * keyIndex);
     return IndexNode(pos, this->indexFileName, this->fileFieldSize);
   }
 
-  IndexNode getFirstNode(int recordNumber) {
+  IndexNode getFirstNode(int recordNumber) const {
     return getNodeByRecordAndIndex(recordNumber, 0);
   }
 
-  bool isLeafNode(int recordNumber) {
+  // Count keys in a record
+  int countKeys(int recordNumber) const {
+    int count = 0;
+    IndexNode node = getFirstNode(recordNumber);
+    for (int i = 0; i < m; i++) {
+      if (node.key == -1)
+        break;
+      count++;
+      node = node.getNextRecord(indexFileName, fileFieldSize);
+    }
+    return count;
+  }
+
+  // Get max key node in a record (last valid key)
+  IndexNode getMaxKeyNode(int recordNumber) const {
+    IndexNode node = getFirstNode(recordNumber);
+    IndexNode maxNode = node;
+    for (int i = 0; i < m; i++) {
+      if (node.key == -1)
+        break;
+      maxNode = node;
+      node = node.getNextRecord(indexFileName, fileFieldSize);
+    }
+    return maxNode;
+  }
+
+  bool isLeafNode(int recordNumber) const {
     int pos = getRecordStart(recordNumber);
     ifstream indexFile = ifstream(this->indexFileName, ios::binary);
     if (!indexFile) {
@@ -72,6 +104,83 @@ public:
     int nodeType;
     indexFile.read(reinterpret_cast<char *>(&nodeType), sizeof(int));
     return nodeType == 0;
+  }
+
+  // Set node type for a record (0=leaf, 1=internal, -1=free)
+  void setNodeType(int recordNumber, int nodeType) {
+    int pos = getRecordStart(recordNumber);
+    fstream file(indexFileName, ios::binary | ios::in | ios::out);
+    file.seekp(pos);
+    file.write(reinterpret_cast<char*>(&nodeType), fileFieldSize);
+    file.close();
+  }
+
+  // Add a record to the free list
+  void addToFreeList(int recordNumber) {
+    // Read current free list head from record 0
+    IndexNode freeListHead = getFirstNode(0);
+    int currentFreeHead = freeListHead.key;
+    
+    // Mark record as free: nodeType=-1, first slot points to old free head
+    int recordStart = getRecordStart(recordNumber);
+    fstream file(indexFileName, ios::binary | ios::in | ios::out);
+    int freeMarker = -1;
+    file.seekp(recordStart);
+    file.write(reinterpret_cast<char*>(&freeMarker), fileFieldSize); // nodeType = -1
+    file.write(reinterpret_cast<char*>(&currentFreeHead), fileFieldSize); // points to old head
+    file.close();
+    
+    // Update free list head in record 0 to point to this record
+    freeListHead.key = recordNumber;
+    writeIndexItem(freeListHead);
+  }
+
+  // Delete at node position and shift remaining keys left
+  void deleteAtNode(IndexNode deleteNode) {
+    int recordNumber = deleteNode.getRecordNumber(fileFieldSize, m);
+    int recordEnd = getRecordStart(recordNumber) + fileFieldSize * (2 * m + 1);
+    
+    IndexNode currNode = deleteNode;
+    IndexNode nextNode = currNode.getNextRecord(indexFileName, fileFieldSize);
+    
+    // Shift all keys and addresses left (within record bounds)
+    while (nextNode.pos < recordEnd && nextNode.key != -1) {
+      currNode.key = nextNode.key;
+      currNode.address = nextNode.address;
+      writeIndexItem(currNode);
+      currNode = nextNode;
+      nextNode = nextNode.getNextRecord(indexFileName, fileFieldSize);
+    }
+    // Clear the last slot
+    currNode.key = -1;
+    currNode.address = -1;
+    writeIndexItem(currNode);
+  }
+
+  // Insert key-addr at node position (shift remaining right)
+  void insertAtNode(IndexNode insertNode, int key, int addr) {
+    // First find the last valid node (first empty slot)
+    IndexNode node = insertNode;
+    while (node.key != -1) {
+      node = node.getNextRecord(indexFileName, fileFieldSize);
+    }
+    
+    // Shift from end to insert position
+    IndexNode emptySlot = node;
+    while (emptySlot.pos > insertNode.pos) {
+      IndexNode prevNode = IndexNode(
+          emptySlot.pos - 2 * fileFieldSize, 
+          indexFileName, fileFieldSize);
+      emptySlot.key = prevNode.key;
+      emptySlot.address = prevNode.address;
+      writeIndexItem(emptySlot);
+      emptySlot = prevNode;
+    }
+    
+    // Insert at position
+    insertNode.key = key;
+    insertNode.address = addr;
+    writeIndexItem(insertNode);
   }
 
   void createIndexFile(char *filename, int numberOfRecords, int m) {
@@ -147,3 +256,5 @@ runtime_error& e) { cerr << e.what() << endl;
 
     return 0;
 }*/
+
+#endif // INDEX_FILE_HANDLER_CPP
