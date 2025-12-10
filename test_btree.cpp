@@ -15,8 +15,8 @@ int main() {
         cout << endl;
 
         // Initialize B-tree addition handler
-        BTreeAddition btree;
-        btree.initialize(const_cast<char*>(filename), numberOfRecords, m);
+        BTreeAddition btree(m,numberOfRecords,const_cast<char*>(filename));
+        //btree.initialize(const_cast<char*>(filename), numberOfRecords, m);
 /*
         // Add first record
         cout << "Adding record with key=50, address=100 (external data address)" << endl;

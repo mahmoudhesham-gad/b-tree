@@ -10,7 +10,7 @@ class BTreeAddition : public IndexFileHandler {
 private:
     int m; // B-tree order
     int numberOfRecords;
-    char* filename;
+    char *filename;
 
     struct Record {
         int key;
@@ -228,10 +228,16 @@ private:
     int rootRow = -1; // Track the root row
 
 public:
-    void initialize(char* fname, int numRecords, int order) {
+    /*void initialize(char* fname, int numRecords, int order) {
         filename = fname;
         numberOfRecords = numRecords;
         m = order;
+        rootRow = -1;
+    }*/
+    BTreeAddition(int m, int numberOfRecords,char* filename) {
+        this->m = m;
+        this->numberOfRecords = numberOfRecords;
+        this->filename = filename;
         rootRow = -1;
     }
 
